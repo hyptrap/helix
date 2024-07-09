@@ -30,6 +30,41 @@ All shortcuts/keymaps can be found [in the documentation on the website](https:/
 
 [Troubleshooting](https://github.com/helix-editor/helix/wiki/Troubleshooting)
 
+# Mad Mod
+
+* mod: collapse_selection -> collapse_selection_or_goto_word_definition
+  - if text selected, do collapse_selection, otherwise goto_definition with goto_word jumps
+
+* add: goto_word_reference
+  - goto_reference with goto_word jumps (two word for whole buffer), binds to `g;`
+
+* mod: global_search
+  - for register '/', the global_search will shows up the result immediatly
+  - add simple argument filter, with h i d and c, invoke by ' -- h i d2 c' etc.
+  - using `Alt-k` to kill the whole string of the global_search prompt (or other prompts as well)
+  - TODO: make argument filter general for file picker as well?
+
+* fix: status message overflow issue, this will trigger by selecting a long enough sentence, and press '*' or else, seems openSUSE only
+
+* mod: search_selection
+  - like vim, the '*' operator will now select the symbol if nothing selected, or copy to the '/' register like what helix did
+
+* mod: symbol_picker
+  - make LSP support `hierarchicalDocumentSymbolSupport`, and shows the full name with signature
+  - TODO: the `workspace/symbol` request seems has no hierarchical symbols
+
+* add: focus_N
+  - inspired by ace-window, can now use Alt-1,2,3... for switching the window fastly
+  - each window (or view in helix term), has a little sign about it's number at bottom left status line
+  - the window is always sorted by the position (x then y)
+  - maybe a little bit ugly, hmm
+
+* add: search
+  - three options `search.case_sensitive`, `search.whole_word` and `search.regex`
+  - add the statusline for the search_config, `r` for regex, `i` for case insensitive, and `w` for whole word search
+
+Many of the changes is commited arbitrarily, so I squashed them into just single commit.
+
 # Features
 
 - Vim-like modal editing

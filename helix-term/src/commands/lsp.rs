@@ -63,6 +63,7 @@ macro_rules! language_server_with_feature {
 
 struct SymbolInformationItem {
     symbol: lsp::SymbolInformation,
+    signature: Option<String>,
     offset_encoding: OffsetEncoding,
     uri: Uri,
 }
@@ -291,22 +292,31 @@ pub fn symbol_picker(cx: &mut Context) {
         uri: &Uri,
         symbol: lsp::DocumentSymbol,
         offset_encoding: OffsetEncoding,
+        prefix: &str,
     ) {
+        // TODO: &mut String for performance? with push/pop
+        let mut name = prefix.to_string();
+        if !name.is_empty() {
+            name.push_str("::"); // cpp style
+        }
+        name.push_str(symbol.name.as_str());
+
         #[allow(deprecated)]
         list.push(SymbolInformationItem {
             symbol: lsp::SymbolInformation {
-                name: symbol.name,
+                name: name.clone(),
                 kind: symbol.kind,
                 tags: symbol.tags,
                 deprecated: symbol.deprecated,
                 location: lsp::Location::new(file.uri.clone(), symbol.selection_range),
                 container_name: None,
             },
+            signature: symbol.detail,
             offset_encoding,
             uri: uri.clone(),
         });
         for child in symbol.children.into_iter().flatten() {
-            nested_to_flat(list, file, uri, child, offset_encoding);
+            nested_to_flat(list, file, uri, child, offset_encoding, name.as_str());
         }
     }
     let doc = doc!(cx.editor);
@@ -339,9 +349,11 @@ pub fn symbol_picker(cx: &mut Context) {
                         .map(|symbol| SymbolInformationItem {
                             uri: doc_uri.clone(),
                             symbol,
+                            signature: None,
                             offset_encoding,
                         })
                         .collect(),
+                    // for rust-analyzer: `snap.config.hierarchical_symbols` must be enabled
                     lsp::DocumentSymbolResponse::Nested(symbols) => {
                         let mut flat_symbols = Vec::new();
                         for symbol in symbols {
@@ -351,6 +363,7 @@ pub fn symbol_picker(cx: &mut Context) {
                                 &doc_uri,
                                 symbol,
                                 offset_encoding,
+                                "",
                             )
                         }
                         flat_symbols
@@ -383,6 +396,14 @@ pub fn symbol_picker(cx: &mut Context) {
                 // URI in with the symbol name in this picker.
                 ui::PickerColumn::new("name", |item: &SymbolInformationItem, _| {
                     item.symbol.name.as_str().into()
+                }),
+                // Signature of the symbol
+                ui::PickerColumn::new("signature", |item: &SymbolInformationItem, _| {
+                    if let Some(ref signature) = item.signature {
+                        signature.to_string().into()
+                    } else {
+                        "".into()
+                    }
                 }),
             ];
 
@@ -454,6 +475,7 @@ pub fn workspace_symbol_picker(cx: &mut Context) {
                                 };
                                 Some(SymbolInformationItem {
                                     symbol,
+                                    signature: None,
                                     uri,
                                     offset_encoding,
                                 })

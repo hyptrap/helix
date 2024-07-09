@@ -59,7 +59,10 @@ use crate::{
     compositor::{self, Component, Compositor},
     filter_picker_entry,
     job::Callback,
-    ui::{self, overlay::overlaid, Picker, PickerColumn, Popup, Prompt, PromptEvent},
+    ui::{
+        self, overlay::overlaid, transform_search_query, Picker, PickerColumn, Popup, Prompt,
+        PromptEvent,
+    },
 };
 
 use crate::job::{self, Jobs};
@@ -328,7 +331,7 @@ impl MappableCommand {
         delete_selection_noyank, "Delete selection without yanking",
         change_selection, "Change selection",
         change_selection_noyank, "Change selection without yanking",
-        collapse_selection, "Collapse selection into single cursor",
+        collapse_selection_or_goto_word_definition, "Collapse selection, or jump to definition if empty",
         flip_selections, "Flip selection cursor and anchor",
         ensure_selections_forward, "Ensure all selections face forward",
         insert_mode, "Insert before selection",
@@ -465,6 +468,15 @@ impl MappableCommand {
         transpose_view, "Transpose splits",
         rotate_view, "Goto next window",
         rotate_view_reverse, "Goto previous window",
+        focus_1, "Focus window by number 1",
+        focus_2, "Focus window by number 2",
+        focus_3, "Focus window by number 3",
+        focus_4, "Focus window by number 4",
+        focus_5, "Focus window by number 5",
+        focus_6, "Focus window by number 6",
+        focus_7, "Focus window by number 7",
+        focus_8, "Focus window by number 8",
+        focus_9, "Focus window by number 9",
         hsplit, "Horizontal bottom split",
         hsplit_new, "Horizontal bottom split scratch buffer",
         vsplit, "Vertical right split",
@@ -529,6 +541,7 @@ impl MappableCommand {
         command_palette, "Open command palette",
         goto_word, "Jump to a two-character label",
         extend_to_word, "Extend to a two-character label",
+        goto_word_reference, "Reference of a two-character label",
     );
 }
 
@@ -954,7 +967,8 @@ fn trim_selections(cx: &mut Context) {
             .unwrap_or(ranges.len() - 1);
         doc.set_selection(view.id, Selection::new(ranges, idx));
     } else {
-        collapse_selection(cx);
+        // MUST only collapse selection, TODO: assertion
+        collapse_selection_or_goto_word_definition(cx);
         keep_primary_selection(cx);
     };
 }
@@ -2137,11 +2151,17 @@ fn search_next_or_prev_impl(cx: &mut Context, movement: Movement, direction: Dir
     let scrolloff = config.scrolloff;
     if let Some(query) = cx.editor.registers.first(register, cx.editor) {
         let search_config = &config.search;
-        let case_insensitive = if search_config.smart_case {
+
+        // TODO: merge with raw_regex_prompt
+        let case_insensitive = if search_config.case_sensitive {
+            false
+        } else if search_config.smart_case {
             !query.chars().any(char::is_uppercase)
         } else {
             false
         };
+        let query = transform_search_query(search_config, query.as_ref());
+
         let wrap_around = search_config.wrap_around;
         if let Ok(regex) = rope::RegexBuilder::new()
             .syntax(
@@ -2185,6 +2205,10 @@ fn extend_search_prev(cx: &mut Context) {
 }
 
 fn search_selection(cx: &mut Context) {
+    // try to expand firstly, this will modify the selections
+    do_expand_selection(cx.editor, true);
+
+    // ownership renewed :)
     let register = cx.register.unwrap_or('/');
     let (view, doc) = current!(cx.editor);
     let contents = doc.text().slice(..);
@@ -2448,7 +2472,7 @@ fn global_search(cx: &mut Context) {
     .with_preview(|_editor, FileResult { path, line_num, .. }| {
         Some((path.as_path().into(), Some((*line_num, *line_num))))
     })
-    .with_history_register(Some(reg))
+    .with_history_register(Some(reg), cx.editor)
     .with_dynamic_query(get_files, Some(275));
 
     cx.push_layer(Box::new(overlaid(picker)));
@@ -2743,11 +2767,17 @@ fn change_selection_noyank(cx: &mut Context) {
     delete_selection_impl(cx, Operation::Change, YankAction::NoYank);
 }
 
-fn collapse_selection(cx: &mut Context) {
+fn collapse_selection_or_goto_word_definition(cx: &mut Context) {
     let (view, doc) = current!(cx.editor);
     let text = doc.text().slice(..);
 
-    let selection = doc.selection(view.id).clone().transform(|range| {
+    let selection = doc.selection(view.id);
+    if cx.editor.mode == Mode::Normal && selection.is_single_grapheme(text) {
+        // only a single word, eq. empty
+        return jump_to_word(cx, Movement::Move, Some(goto_definition));
+    }
+
+    let selection = selection.clone().transform(|range| {
         let pos = range.cursor(text);
         Range::new(pos, pos)
     });
@@ -4876,26 +4906,32 @@ fn reverse_selection_contents(cx: &mut Context) {
 
 // tree sitter node selection
 
-fn expand_selection(cx: &mut Context) {
-    let motion = |editor: &mut Editor| {
-        let (view, doc) = current!(editor);
+fn do_expand_selection(editor: &mut Editor, skip_if_selected: bool) {
+    let (view, doc) = current!(editor);
 
-        if let Some(syntax) = doc.syntax() {
-            let text = doc.text().slice(..);
+    if let Some(syntax) = doc.syntax() {
+        let text = doc.text().slice(..);
 
-            let current_selection = doc.selection(view.id);
-            let selection = object::expand_selection(syntax, text, current_selection.clone());
-
-            // check if selection is different from the last one
-            if *current_selection != selection {
-                // save current selection so it can be restored using shrink_selection
-                view.object_selections.push(current_selection.clone());
-
-                doc.set_selection(view.id, selection);
-            }
+        let current_selection = doc.selection(view.id);
+        if skip_if_selected && !current_selection.is_single_grapheme(text) {
+            return;
         }
-    };
-    cx.editor.apply_motion(motion);
+
+        let selection = object::expand_selection(syntax, text, current_selection.clone());
+
+        // check if selection is different from the last one
+        if *current_selection != selection {
+            // save current selection so it can be restored using shrink_selection
+            view.object_selections.push(current_selection.clone());
+
+            doc.set_selection(view.id, selection);
+        }
+    }
+}
+
+fn expand_selection(cx: &mut Context) {
+    cx.editor
+        .apply_motion(|editor: &mut Editor| do_expand_selection(editor, false));
 }
 
 fn shrink_selection(cx: &mut Context) {
@@ -5091,6 +5127,50 @@ fn rotate_view(cx: &mut Context) {
 
 fn rotate_view_reverse(cx: &mut Context) {
     cx.editor.focus_prev()
+}
+
+fn focus_by_number(cx: &mut Context, num: usize) {
+    let view = cx.editor.tree.views_sorted_by_position().nth(num - 1);
+    if let Some(view) = view {
+        cx.editor.focus(view.id)
+    }
+}
+
+// TODO: fn focus_n<const N: usize>(cx: &mut Context)
+fn focus_1(cx: &mut Context) {
+    focus_by_number(cx, 1)
+}
+
+fn focus_2(cx: &mut Context) {
+    focus_by_number(cx, 2)
+}
+
+fn focus_3(cx: &mut Context) {
+    focus_by_number(cx, 3)
+}
+
+fn focus_4(cx: &mut Context) {
+    focus_by_number(cx, 4)
+}
+
+fn focus_5(cx: &mut Context) {
+    focus_by_number(cx, 5)
+}
+
+fn focus_6(cx: &mut Context) {
+    focus_by_number(cx, 6)
+}
+
+fn focus_7(cx: &mut Context) {
+    focus_by_number(cx, 7)
+}
+
+fn focus_8(cx: &mut Context) {
+    focus_by_number(cx, 8)
+}
+
+fn focus_9(cx: &mut Context) {
+    focus_by_number(cx, 9)
 }
 
 fn jump_view_right(cx: &mut Context) {
@@ -6028,14 +6108,23 @@ fn replay_macro(cx: &mut Context) {
 }
 
 fn goto_word(cx: &mut Context) {
-    jump_to_word(cx, Movement::Move)
+    jump_to_word(cx, Movement::Move, None)
 }
 
 fn extend_to_word(cx: &mut Context) {
-    jump_to_word(cx, Movement::Extend)
+    jump_to_word(cx, Movement::Extend, None)
 }
 
-fn jump_to_label(cx: &mut Context, labels: Vec<Range>, behaviour: Movement) {
+fn goto_word_reference(cx: &mut Context) {
+    jump_to_word(cx, Movement::Move, Some(goto_reference))
+}
+
+fn jump_to_label(
+    cx: &mut Context,
+    labels: Vec<Range>,
+    behaviour: Movement,
+    do_next: Option<fn(&mut Context)>,
+) {
     let doc = doc!(cx.editor);
     let alphabet = &cx.editor.config().jump_label_alphabet;
     if labels.is_empty() {
@@ -6117,12 +6206,16 @@ fn jump_to_label(cx: &mut Context, labels: Vec<Range>, behaviour: Movement) {
                     range.with_direction(Direction::Forward)
                 };
                 doc_mut!(cx.editor, &doc).set_selection(view, range.into());
+
+                if let Some(func) = do_next {
+                    func(cx);
+                }
             }
         });
     });
 }
 
-fn jump_to_word(cx: &mut Context, behaviour: Movement) {
+fn jump_to_word(cx: &mut Context, behaviour: Movement, do_next: Option<fn(&mut Context)>) {
     // Calculate the jump candidates: ranges for any visible words with two or
     // more characters.
     let alphabet = &cx.editor.config().jump_label_alphabet;
@@ -6209,5 +6302,5 @@ fn jump_to_word(cx: &mut Context, behaviour: Movement) {
             break;
         }
     }
-    jump_to_label(cx, words, behaviour)
+    jump_to_label(cx, words, behaviour, do_next)
 }

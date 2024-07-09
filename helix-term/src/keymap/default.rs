@@ -59,6 +59,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
             "j" => move_line_down,
             "." => goto_last_modification,
             "w" => goto_word,
+            ";" => goto_word_reference,
         },
         ":" => command_mode,
 
@@ -83,7 +84,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         "A-minus" => merge_selections,
         "A-_" => merge_consecutive_selections,
         "S" => split_selection,
-        ";" => collapse_selection,
+        ";" => collapse_selection_or_goto_word_definition,
         "A-;" => flip_selections,
         "A-o" | "A-up" => expand_selection,
         "A-i" | "A-down" => shrink_selection,
@@ -208,6 +209,16 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
                 "C-v" | "v" => vsplit_new,
             },
         },
+
+        "A-1" => focus_1,
+        "A-2" => focus_2,
+        "A-3" => focus_3,
+        "A-4" => focus_4,
+        "A-5" => focus_5,
+        "A-6" => focus_6,
+        "A-7" => focus_7,
+        "A-8" => focus_8,
+        "A-9" => focus_9,
 
         // move under <space>c
         "C-c" => toggle_comments,

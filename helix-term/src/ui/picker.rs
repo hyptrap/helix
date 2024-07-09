@@ -424,8 +424,23 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
         self
     }
 
-    pub fn with_history_register(mut self, history_register: Option<char>) -> Self {
+    pub fn with_history_register(
+        mut self,
+        history_register: Option<char>,
+        editor: &Editor,
+    ) -> Self {
         self.prompt.with_history_register(history_register);
+
+        // If the prompt has a history completion and is empty, accept it now
+        if let Some(completion) = self
+            .prompt
+            .first_history_completion(editor)
+            .filter(|_| self.prompt.line().is_empty())
+        {
+            self.prompt.set_line(completion.to_string(), editor);
+            self.handle_prompt_change(true);
+        }
+
         self
     }
 
@@ -1033,31 +1048,19 @@ impl<I: 'static + Send + Sync, D: 'static + Send + Sync> Component for Picker<I,
                 }
             }
             key!(Enter) => {
-                // If the prompt has a history completion and is empty, use enter to accept
-                // that completion
-                if let Some(completion) = self
-                    .prompt
-                    .first_history_completion(ctx.editor)
-                    .filter(|_| self.prompt.line().is_empty())
-                {
-                    self.prompt.set_line(completion.to_string(), ctx.editor);
-                    // Inserting from the history register is a paste.
-                    self.handle_prompt_change(true);
-                } else {
-                    if let Some(option) = self.selection() {
-                        (self.callback_fn)(ctx, option, Action::Replace);
-                    }
-                    if let Some(history_register) = self.prompt.history_register() {
-                        if let Err(err) = ctx
-                            .editor
-                            .registers
-                            .push(history_register, self.primary_query().to_string())
-                        {
-                            ctx.editor.set_error(err.to_string());
-                        }
-                    }
-                    return close_fn(self);
+                if let Some(option) = self.selection() {
+                    (self.callback_fn)(ctx, option, Action::Replace);
                 }
+                if let Some(history_register) = self.prompt.history_register() {
+                    if let Err(err) = ctx
+                        .editor
+                        .registers
+                        .push(history_register, self.primary_query().to_string())
+                    {
+                        ctx.editor.set_error(err.to_string());
+                    }
+                }
+                return close_fn(self);
             }
             ctrl!('s') => {
                 if let Some(option) = self.selection() {

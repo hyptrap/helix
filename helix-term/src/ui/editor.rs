@@ -1524,10 +1524,11 @@ impl Component for EditorView {
                 cx.editor.theme.get("ui.text")
             };
 
-            surface.set_string(
+            surface.set_stringn(
                 area.x,
                 area.y + area.height.saturating_sub(1),
                 status_msg,
+                area.width as usize,
                 style,
             );
         }
