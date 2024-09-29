@@ -17,7 +17,9 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         "F" => find_prev_char,
         "r" => replace,
         "R" => replace_with_yanked,
-        "A-." =>  repeat_last_motion,
+        // "." => repeat_last_insert is defined in @see command_mode
+        "A-." => repeat_last_motion,
+        ";" => goto_word_definition,
 
         "~" => switch_case,
         "`" => switch_to_lowercase,
@@ -59,6 +61,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
             "j" => move_line_down,
             "." => goto_last_modification,
             "w" => goto_word,
+            ";" => goto_word_reference,
         },
         ":" => command_mode,
 
@@ -77,14 +80,19 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         "C" => copy_selection_on_next_line,
         "A-C" => copy_selection_on_prev_line,
 
+        // selections, lessly used
+        "," => { "Comma"
+            "," => collapse_selection,
+            "." => flip_selections,
+            ";" => keep_primary_selection,
+            "'" => remove_primary_selection,
+        },
 
         "s" => select_regex,
         "A-s" => split_selection_on_newline,
         "A-minus" => merge_selections,
         "A-_" => merge_consecutive_selections,
         "S" => split_selection,
-        ";" => collapse_selection,
-        "A-;" => flip_selections,
         "A-o" | "A-up" => expand_selection,
         "A-i" | "A-down" => shrink_selection,
         "A-I" | "A-S-down" => select_all_children,
@@ -113,6 +121,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
             "g" => goto_prev_change,
             "G" => goto_first_change,
             "f" => goto_prev_function,
+            "n" => goto_prev_function_name,
             "t" => goto_prev_class,
             "a" => goto_prev_parameter,
             "c" => goto_prev_comment,
@@ -127,6 +136,7 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
             "g" => goto_next_change,
             "G" => goto_last_change,
             "f" => goto_next_function,
+            "n" => goto_next_function_name,
             "t" => goto_next_class,
             "a" => goto_next_parameter,
             "c" => goto_next_comment,
@@ -163,9 +173,6 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
         "A-J" => join_selections_space,
         "K" => keep_selections,
         "A-K" => remove_selections,
-
-        "," => keep_primary_selection,
-        "A-," => remove_primary_selection,
 
         // "q" => record_macro,
         // "Q" => replay_macro,
@@ -208,6 +215,16 @@ pub fn default() -> HashMap<Mode, KeyTrie> {
                 "C-v" | "v" => vsplit_new,
             },
         },
+
+        "A-1" => focus_1,
+        "A-2" => focus_2,
+        "A-3" => focus_3,
+        "A-4" => focus_4,
+        "A-5" => focus_5,
+        "A-6" => focus_6,
+        "A-7" => focus_7,
+        "A-8" => focus_8,
+        "A-9" => focus_9,
 
         // move under <space>c
         "C-c" => toggle_comments,
